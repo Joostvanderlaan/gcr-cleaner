@@ -1,3 +1,58 @@
+## notities
+
+gcloud --quiet run deploy "gcr-cleaner" \
+  --async \
+  --project ${PROJECT_ID} \
+  --platform "managed" \
+  --service-account "gcr-cleaner@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --image "us-docker.pkg.dev/gcr-cleaner/gcr-cleaner/gcr-cleaner" \
+  --region "europe-west1" \
+  --timeout "60s"
+
+
+
+gsutil acl ch -u gcr-cleaner@${PROJECT_ID}.iam.gserviceaccount.com:W gs://artifacts.${PROJECT_ID}.appspot.com
+
+gsutil acl ch -u gcr-cleaner@${PROJECT_ID}.iam.gserviceaccount.com:W gs://eu.artifacts.${PROJECT_ID}.appspot.com
+
+
+gcloud run services add-iam-policy-binding "gcr-cleaner" \
+  --project "${PROJECT_ID}" \
+  --platform "managed" \
+  --region "europe-west1" \
+  --member "serviceAccount:gcr-cleaner-invoker@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role "roles/run.invoker"
+
+
+
+gcloud app create \
+  --project "${PROJECT_ID}" \
+  --region "europe-west" \
+  --quiet
+
+export REPO="us-docker-pkg.dev/${PROJECT_ID}/my-repo/my-image"
+
+export REPO="europe-west1-docker.pkg.dev/${PROJECT_ID}/fuww/news"
+
+
+export SERVICE_URL=$(gcloud run services describe gcr-cleaner --project "${PROJECT_ID}" --platform "managed" --region "europe-west1" --format 'value(status.url)')
+
+gcloud scheduler jobs create http "gcrclean-news" \
+  --project ${PROJECT_ID} \
+  --description "Cleanup ${REPO}" \
+  --uri "${SERVICE_URL}/http" \
+  --message-body "{\"repos\":[\"${REPO}\"]}" \
+  --oidc-service-account-email "gcr-cleaner-invoker@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --schedule "0 8 * * 2" \
+  --time-zone="Etc/UTC"
+
+gcloud scheduler jobs run "gcrclean-news" \
+  --project "${PROJECT_ID}"
+
+
+
+
+
 # GCR Cleaner
 
 GCR Cleaner deletes stale images in Google Cloud [Container
